@@ -1,4 +1,6 @@
 /*
+Hello World PI PICO
+
 # Make sure that the PICO_SDK_PATH is set properly
 
 cd /home/bruce/pico/hello-pico
