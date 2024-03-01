@@ -63,3 +63,15 @@ pico_enable_stdio_usb(hello-w5500 1)
 pico_enable_stdio_uart(hello-w5500 0)
 target_link_libraries(hello-w5500 pico_stdlib hardware_spi)
 
+# ----- hello-w5500-2 ---------------------------------------------------------
+
+add_executable(hello-w5500-2
+  hello-w5500-2.cpp
+)
+
+pico_enable_stdio_usb(hello-w5500-2 1)
+# Watch out here!  We need to make sure that the STDOUT doesn't 
+# get sent on the UART as well.
+pico_enable_stdio_uart(hello-w5500-2 0)
+target_link_libraries(hello-w5500-2 pico_stdlib hardware_spi)
+
