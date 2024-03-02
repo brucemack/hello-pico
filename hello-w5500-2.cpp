@@ -5,6 +5,7 @@
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/spi.h"
+#include "hardware/sync.h"
 
 #define LED_PIN (25)
 
@@ -35,7 +36,7 @@ minicom -b 115200 -o -D /dev/ttyACM0
 void prettyHexDump(const uint8_t* data, uint32_t len, std::ostream& out,
     bool color);
 
-static void set_Sn_reg8(spi_inst_t* spi, uint8_t socket, uint16_t offset, uint8_t v) {
+static void set_reg8(spi_inst_t* spi, uint8_t block, uint16_t offset, uint8_t v) {
     uint8_t buf[4];
     // S0_CR Setup
     gpio_put(SPI0_CSN_PIN, 0);
@@ -44,12 +45,16 @@ static void set_Sn_reg8(spi_inst_t* spi, uint8_t socket, uint16_t offset, uint8_
     buf[0] = (offset & 0xff00) >> 8;
     buf[1] = (offset & 0x00ff);
     // Control
-    buf[2] = ((socket * 4 + 1) << 3) | 0b1'00;
+    buf[2] = ((block & 0b11111) << 3) | 0b1'00;
     // Data 
     buf[3] = v;
     spi_write_blocking(spi0, buf, 4);
     gpio_put(SPI0_CSN_PIN, 1);
     asm volatile("nop \n nop \n nop");
+}
+
+static void set_Sn_reg8(spi_inst_t* spi, uint8_t socket, uint16_t offset, uint8_t v) {
+    set_reg8(spi, socket * 4 + 1, offset, v);
 }
 
 static void set_Sn_reg16(spi_inst_t* spi, uint8_t socket, uint16_t offset, uint16_t v) {
@@ -90,37 +95,19 @@ static void set_Sn_TXBUF(spi_inst_t* spi, uint8_t socket, uint16_t offset,
 }
 
 static void set_MR(spi_inst_t* spi, uint8_t v) {
-    uint8_t buf[4];
-    // S0_CR Setup
-    gpio_put(SPI0_CSN_PIN, 0);
-    asm volatile("nop \n nop \n nop");
-    // Offset
-    buf[0] = 0;
-    buf[1] = 0;
-    // Control
-    buf[2] = 0b00000 | 0b1'00;
-    // Data 
-    buf[3] = v;
-    spi_write_blocking(spi0, buf, 4);
-    gpio_put(SPI0_CSN_PIN, 1);
-    asm volatile("nop \n nop \n nop");
+    set_reg8(spi, 0, 0, v);
+}
+
+static void set_SIR(spi_inst_t* spi, uint8_t v) {
+    set_reg8(spi, 0, 0x17, v);
+}
+
+static void set_SIMR(spi_inst_t* spi, uint8_t v) {
+    set_reg8(spi, 0, 0x18, v);
 }
 
 static void set_PHYCFGR(spi_inst_t* spi, uint8_t v) {
-    uint8_t buf[4];
-    // S0_CR Setup
-    gpio_put(SPI0_CSN_PIN, 0);
-    asm volatile("nop \n nop \n nop");
-    // Offset
-    buf[0] = 0;
-    buf[1] = 0x2e;
-    // Control
-    buf[2] = 0b00000 | 0b1'00;
-    // Data 
-    buf[3] = v;
-    spi_write_blocking(spi0, buf, 4);
-    gpio_put(SPI0_CSN_PIN, 1);
-    asm volatile("nop \n nop \n nop");
+    set_reg8(spi, 0, 0x2e, v);
 }
 
 static void set_SHAR(spi_inst_t* spi, const uint8_t* mac) {
@@ -168,31 +155,14 @@ static void set_Sn_RX_RD(spi_inst_t* spi, uint8_t socket, uint16_t v) {
     set_Sn_reg16(spi, socket, 0x28, v);
 }
 
-static uint8_t get_MR(spi_inst_t* spi) {
+static uint8_t get_reg8(spi_inst_t* spi, uint16_t offset) {
     uint8_t buf[3];
     // S0_CR Setup
     gpio_put(SPI0_CSN_PIN, 0);
     asm volatile("nop \n nop \n nop");
     // Offset
-    buf[0] = 0;
-    buf[1] = 0;
-    // Control
-    buf[2] = 0b00000 | 0b0'00;
-    spi_write_blocking(spi0, buf, 3);
-    spi_read_blocking(spi0, 0, buf, 1);
-    gpio_put(SPI0_CSN_PIN, 1);
-    asm volatile("nop \n nop \n nop");
-    return buf[0];
-}    
-
-static uint8_t get_PHYCFGR(spi_inst_t* spi) {
-    uint8_t buf[3];
-    // S0_CR Setup
-    gpio_put(SPI0_CSN_PIN, 0);
-    asm volatile("nop \n nop \n nop");
-    // Offset
-    buf[0] = 0;
-    buf[1] = 0x2e;
+    buf[0] = (offset & 0xff00) >> 8;
+    buf[1] = (offset & 0x00ff);
     // Control
     buf[2] = 0b00000 | 0b0'00;
     spi_write_blocking(spi0, buf, 3);
@@ -234,6 +204,18 @@ static uint16_t get_Sn_reg16(spi_inst_t* spi, uint8_t socket, uint16_t offset) {
     gpio_put(SPI0_CSN_PIN, 1);
     asm volatile("nop \n nop \n nop");
     return (buf[0] << 8) | buf[1];
+}    
+
+static uint8_t get_MR(spi_inst_t* spi) {
+    return get_reg8(spi, 0);
+}    
+
+static uint8_t get_SIR(spi_inst_t* spi) {
+    return get_reg8(spi, 0x17);
+}    
+
+static uint8_t get_PHYCFGR(spi_inst_t* spi) {
+    return get_reg8(spi, 0x2e);
 }    
 
 static void get_Sn_RXBUF(spi_inst_t* spi, uint8_t socket, uint16_t offset, uint8_t* buf2, uint16_t len2) {
@@ -446,6 +428,98 @@ void setBroadcastIP4(uint8_t* a) {
     a[3] = 0xff;
 }
 
+static const uint8_t eventMask = GPIO_IRQ_EDGE_FALL;
+
+// For HW buffer (in W5500)
+static const uint16_t blockSize = 16384;
+static const uint16_t blockMask = blockSize - 1;
+
+static const uint32_t rxBufferSize = 16384;
+static const uint32_t rxBufferMask = rxBufferSize - 1;
+uint8_t rxBuffer[rxBufferSize];
+volatile uint32_t rxBufferRD = 0;
+volatile uint32_t rxBufferWR = 0;
+volatile uint32_t rxBufferOF = 0;
+
+uint32_t rxBufferAvailable() {
+    __dsb();
+    return rxBufferWR - rxBufferRD;
+}
+
+void rxBufferRead(uint8_t* buf, uint32_t len) {
+    if (len > rxBufferAvailable()) {
+        panic("Not available");
+    }
+    for (uint32_t i = 0; i < len; i++) {
+        buf[i] = rxBuffer[rxBufferRD & rxBufferMask];
+        rxBufferRD++;
+        // TODO: WRAP CASE
+    }
+    __dsb();
+}
+
+void rxBufferPeek(uint8_t* buf, uint32_t len) {
+    if (len > rxBufferAvailable()) {
+        panic("Not available");
+    }
+    uint32_t tempRD = rxBufferRD;
+    for (uint32_t i = 0; i < len; i++) {
+        buf[i] = rxBuffer[tempRD & rxBufferMask];
+        tempRD++;
+    }
+    __dsb();
+}
+
+static void rxHandler(uint gpio, uint32_t events) {
+
+    // Now we need to clear the interrupt flags immediately to 
+    // make sure we don't lose anything.
+    gpio_acknowledge_irq(W5500_INT_PIN, events);
+    set_SIR(spi0, 0);
+    set_Sn_IR(spi0, 0, 0xff);
+
+    // Pull data from the network as agressively as possible
+    uint16_t rx_rsr = get_Sn_RX_RSR(spi0, 0);
+
+    if (rx_rsr) {
+
+        uint16_t rx_rd = get_Sn_RX_RD(spi0, 0);            
+        // Compute the reads, possibly in two parts if we are 
+        // close to the end of the W5500 buffer
+        uint16_t offset0 = rx_rd & blockMask;
+        uint16_t len0 = std::min(rx_rsr, (uint16_t)(blockSize - offset0));
+        uint16_t offset1 = 0;
+        uint16_t len1 = rx_rsr - len0;
+
+        uint8_t buf[blockSize];
+
+        get_Sn_RXBUF(spi0, 0, offset0, buf, len0);
+        if (len1 > 0) {
+            get_Sn_RXBUF(spi0, 0, offset1, buf + len0, len1);
+        }
+
+        // Move into the software buffer
+        for (uint32_t i = 0; i < len0 + len1; i++) {
+            rxBuffer[rxBufferWR & rxBufferMask] = buf[i];
+            // Check for the overflow case
+            if (((rxBufferWR + 1) & rxBufferMask) == (rxBufferRD & rxBufferMask)) {
+                rxBufferOF++;
+            } else {
+                rxBufferWR++;
+                // TODO: WRAP CASE
+            }
+        }
+
+        // Note that the management of RX_RD is independent of the 
+        // size of the RX buffer.  The addressing just pretends
+        // everything is 64K. This is expected to wrap at 0xffff!  
+        rx_rd += rx_rsr;
+        set_Sn_RX_RD(spi0, 0, rx_rd);
+        // Tell the controller that we've done a receive
+        set_Sn_CR(spi0, 0, 0x40);
+    }
+}
+
 int main() {
  
     stdio_init_all();
@@ -472,9 +546,10 @@ int main() {
     gpio_init(W5500_RST_PIN);
     gpio_set_dir(W5500_RST_PIN, GPIO_OUT);
     gpio_put(W5500_RST_PIN, 1);
+
     // Interrupt input
     gpio_init(W5500_INT_PIN);
-    gpio_set_dir(W5500_INT_PIN, GPIO_IN);
+    gpio_set_dir(W5500_INT_PIN, GPIO_IN);   
 
     sleep_ms(1);
 
@@ -511,14 +586,14 @@ int main() {
     // S0_MR Setup (MACRAW)
     // MAC filter enabled
     set_Sn_MR(spi0, 0, 0b1001'0100);
+    // Enable socket 0 interrupts
+    set_SIMR(spi0, 1);
+
     // S0_CR Setup (OPEN)
     set_Sn_CR(spi0, 0, 0x01);
     // Wait for status = OPEN
     while (get_Sn_SR(spi0, 0) != 0x42);
 
-    // Clear interrupts
-    set_Sn_IR(spi0, 0, 0xff);
-    
     DHCPRequest req;
     uint16_t reqLen;
 
@@ -592,13 +667,8 @@ int main() {
         req.ip.populateHdrCs();
     }
 
-    const uint16_t blockSize = 16384;
-    const uint16_t blockMask = blockSize - 1;
-
     // Transmit the packet
     {
-        //uint16_t tx_fsr = get_Sn_TX_FSR(spi0, 0);
-        //uint16_t tx_rd = get_Sn_TX_RD(spi0, 0);            
         uint16_t tx_wr = get_Sn_TX_WR(spi0, 0);            
         // It's possible that we'd need to do this in two parts
         // because of buffer wrap
@@ -618,78 +688,54 @@ int main() {
     }
 
     // Receive loop
-    int blocks = 16;
+    int block = 16;
 
-    while (1) {     
+    // Clear interrupts
+    set_SIR(spi0, 0);
+    set_Sn_IR(spi0, 0, 0xff);
+    gpio_set_irq_enabled_with_callback(W5500_INT_PIN, eventMask, true, rxHandler);
 
-        uint8_t ir = get_Sn_IR(spi0, 0);
-        set_Sn_IR(spi0, 0, 0xff);
+    while (block > 0) {     
 
-        if (ir & 0x04) {
-            // Look at data 
-            uint16_t rx_rsr = get_Sn_RX_RSR(spi0, 0);
-            uint16_t rx_rd = get_Sn_RX_RD(spi0, 0);            
-            // Compute the reads, possibly in two parts if we are 
-            // close to the end of the buffer
-            uint16_t offset0 = rx_rd & blockMask;
-            uint16_t len0 = std::min(rx_rsr, (uint16_t)(blockSize - offset0));
-            uint16_t offset1 = 0;
-            uint16_t len1 = rx_rsr - len0;
+        // Check to see if we have at least a 2-byte length word available
+        if (rxBufferAvailable() < 2) {
+            continue;
+        }
+        uint8_t lenBuf[2];
+        rxBufferPeek(lenBuf, 2);
+        // This length includes the length bytes
+        uint16_t len = ((uint16_t)lenBuf[0] << 8) | lenBuf[1];
+        // Check to see if we can pull in the full message
+        if (rxBufferAvailable() < len) {
+            continue;
+        }
+        // Pull out a complete message
+        uint8_t buf[blockSize] __attribute__ ((aligned(32)));
+        // (Discard length)
+        rxBufferRead(lenBuf, 2);
+        len -= 2;
+        rxBufferRead(buf, len);
+        
+        //cout << "Got " << len << endl;
+        //cout << "--------------------------------------------------" << endl;
+        //prettyHexDump(buf, len, cout, true);
 
-            uint8_t buf[blockSize];
-            get_Sn_RXBUF(spi0, 0, offset0, buf, len0);
-            if (len1 > 0) {
-                get_Sn_RXBUF(spi0, 0, offset1, buf + len0, len1);
-            }
+        // Process packet
+        const Ethernet2Header* ethHdr = (const Ethernet2Header*)buf;
 
-            const uint8_t* workPtr = buf;
-            uint16_t workLen = len0 + len1;
+        if (buf[35] == 0x43 || buf[35] == 0x44) {
 
-            while (workLen > 0) {
+            char buf2[20];
+            formatMAC(ethHdr->dstMAC, buf2);
+            cout << "DST: " << buf2 << endl;
+            formatMAC(ethHdr->srcMAC, buf2);
+            cout << "SRC: " << buf2 << endl;
 
-                const uint16_t len = ((uint16_t)workPtr[0] << 8) | workPtr[1];
-                const Ethernet2Header* ethHdr = (const Ethernet2Header*)(workPtr + 2);
-
-                if (len > workLen) {
-                    cout << "LENGTH WRONG" << endl;
-                    workLen = 0;
-                }
-                else {
-
-                    if (*(workPtr + 2 + 35) == 0x43 ||
-                        *(workPtr + 2 + 35) == 0x44) {
-
-                        char buf2[20];
-                        formatMAC(ethHdr->dstMAC, buf2);
-                        cout << "DST: " << buf2 << endl;
-                        formatMAC(ethHdr->srcMAC, buf2);
-                        cout << "SRC: " << buf2 << endl;
-
-                        cout << "--------------------------------------------------" << endl;
-                        prettyHexDump(workPtr + 2, len - 2, cout, true);
-                    }
-
-                    workPtr += len;
-                    workLen -= len;
-                } 
-            }
-
-            // Note that the management of RX_RD is independent of the 
-            // size of the RX buffer.  The addressing just pretends
-            // everything is 64K.
-            // This is expected to wrap at 0xffff!  
-            rx_rd += rx_rsr;
-            set_Sn_RX_RD(spi0, 0, rx_rd);
-            // Tell the controller that we've done a receive
-            set_Sn_CR(spi0, 0, 0x40);
-
-            blocks--;
-            if (blocks == 0) {
-                break;
-            }
+            cout << "--------------------------------------------------" << endl;
+            prettyHexDump(buf, len, cout, true);
         }
 
-        sleep_ms(500);
+        block--;
     }
 
     cout << "Done" << endl;
