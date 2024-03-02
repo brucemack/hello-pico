@@ -72,7 +72,7 @@ static void set_Sn_reg16(spi_inst_t* spi, uint8_t socket, uint16_t offset, uint1
 
 static void set_Sn_TXBUF(spi_inst_t* spi, uint8_t socket, uint16_t offset, 
     const uint8_t* buf2, uint16_t buf2Len) {
-    // TODO: CLEAN UP!
+    // TODO: CLEAN UP AND DO THIS WITHOUT AN EXTRA COPY
     uint8_t buf[1024];
     // S0_CR Setup
     gpio_put(SPI0_CSN_PIN, 0);
@@ -122,7 +122,6 @@ static void set_PHYCFGR(spi_inst_t* spi, uint8_t v) {
     gpio_put(SPI0_CSN_PIN, 1);
     asm volatile("nop \n nop \n nop");
 }
-
 
 static void set_SHAR(spi_inst_t* spi, const uint8_t* mac) {
     uint8_t buf[3 + 6];
@@ -461,28 +460,6 @@ int main() {
 
     cout << "Hello, W5500 test" << endl;
 
-    // From: https://en.wikipedia.org/wiki/Internet_checksum#Computation
-    uint8_t t[18];
-    t[0] = 0x45;
-    t[1] = 0x00;
-    t[2] = 0x00;
-    t[3] = 0x73;
-    t[4] = 0x00;
-    t[5] = 0x00;
-    t[6] = 0x40;
-    t[7] = 0x00;
-    t[8] = 0x40;
-    t[9] = 0x11;
-    t[10] = 0xc0;
-    t[11] = 0xa8;
-    t[12] = 0x00;
-    t[13] = 0x01;
-    t[14] = 0xc0;
-    t[15] = 0xa8;
-    t[16] = 0x00;
-    t[17] = 0xc7;
-    printf("%x\n", computeCs(t, 18));
-
     spi_init(spi0, 500 * 1000);
     gpio_set_function(SPI0_RX_PIN, GPIO_FUNC_SPI);
     gpio_set_function(SPI0_SCK_PIN, GPIO_FUNC_SPI);
@@ -503,53 +480,41 @@ int main() {
 
     // Do the formal reset
     gpio_put(W5500_RST_PIN, 0);
-    sleep_ms(1);
+    //sleep_ms(1);
     asm volatile("nop \n nop \n nop");
     gpio_put(W5500_RST_PIN, 1);
 
     // Long wait 
-    sleep_ms(560);
+    sleep_ms(100);
 
-    //uint8_t myMAC[6] = { 0x45, 0x01, 0x01, 0x00, 0xba, 0xbe};
-    uint8_t myMAC[6] = { 0xd4, 0xbe, 0xd9, 0xe8, 0xca, 0xca };
+    // Just made this up
+    uint8_t myMAC[6] = { 0xd4, 0xbe, 0xd9, 0xe8, 0xba, 0xbe };
 
-    // Reset
+    // Reset, wait until done
     set_MR(spi0, get_MR(spi0) | 0x80);
-    while (true) {
-        if (get_MR(spi0) == 0) {
-            break;
-        }
-        cout << "Wait" << endl;
-        sleep_ms(10);
-    }
+    while (get_MR(spi0) != 0);
     
-    // Set address
+    // Set MAC address
     set_SHAR(spi0, myMAC);
 
-    // PHY RESET
+    // PHY RESET, wait until done
     set_PHYCFGR(spi0, get_PHYCFGR(spi0) | 0x80);
     while ((get_PHYCFGR(spi0) & 0x80) == 0);
-    // 100/Full/Manual
+    // 100/Full/Manual seems to work
     set_PHYCFGR(spi0, 0xd8);
-    sleep_ms(5 * 1000);
-    printf("PHYCFGR %x\n", (int)get_PHYCFGR(spi0));
+    // Wait for link to come up
+    while (get_PHYCFGR(spi0) != 0xdf);
 
     // Adjust buffer size up to maximum
     set_Sn_RXBUF_SIZE(spi0, 0, 16);
     set_Sn_TXBUF_SIZE(spi0, 0, 16);
     // S0_MR Setup (MACRAW)
+    // MAC filter enabled
     set_Sn_MR(spi0, 0, 0b1001'0100);
-    // Turn off MAC filter
-    //set_Sn_MR(spi0, 0, 0b0001'0100);
     // S0_CR Setup (OPEN)
     set_Sn_CR(spi0, 0, 0x01);
     // Wait for status = OPEN
-    while (true) {
-        if (get_Sn_SR(spi0, 0) == 0x42) {
-            break;
-        }
-        sleep_ms(50);
-    }
+    while (get_Sn_SR(spi0, 0) != 0x42);
 
     // Clear interrupts
     set_Sn_IR(spi0, 0, 0xff);
@@ -582,8 +547,10 @@ int main() {
         req.dhcp.xid = 7;
         req.dhcp.secs = 0;
         // Turn on broadcast?
-        req.dhcp.flags = htons(0x8000);
-        //req.dhcp.flags = htons(0x0000);
+        //req.dhcp.flags = htons(0x8000);
+        // Unicast - this causes the offer to be sent directly
+        // to us instead of being broadcast
+        req.dhcp.flags = htons(0x0000);
         setZeroIP4(req.dhcp.cIP4);
         setZeroIP4(req.dhcp.yIP4);
         // Next
@@ -617,7 +584,6 @@ int main() {
 
         // Fill in lengths
         reqLen = sizeof(DHCPRequest) - 256 + 18;
-        cout << "IP4 Total Len " << reqLen << endl;
         req.ip.totalLen = htons(reqLen - sizeof(Ethernet2Header));
         req.udp.totalLen = htons(reqLen - sizeof(Ethernet2Header) - sizeof(IP4Header));
         // Do this last!
@@ -629,36 +595,26 @@ int main() {
     const uint16_t blockSize = 16384;
     const uint16_t blockMask = blockSize - 1;
 
-    // Transmit the DHCP packet
+    // Transmit the packet
     {
-        uint16_t tx_fsr = get_Sn_TX_FSR(spi0, 0);
-        cout << "TX_FSR " << tx_fsr << endl;
+        //uint16_t tx_fsr = get_Sn_TX_FSR(spi0, 0);
+        //uint16_t tx_rd = get_Sn_TX_RD(spi0, 0);            
         uint16_t tx_wr = get_Sn_TX_WR(spi0, 0);            
-        cout << "TX_WR " << tx_wr << endl;
-        uint16_t tx_rd = get_Sn_TX_RD(spi0, 0);            
-        cout << "TX_RD " << tx_rd << endl;
+        // It's possible that we'd need to do this in two parts
+        // because of buffer wrap
         uint16_t offset0 = 0;
         uint16_t len0 = reqLen;
         uint16_t len1 = 0;
         // Write the data
         set_Sn_TXBUF(spi0, 0, offset0, (const uint8_t*)&req, len0);
-        // Adjust pointers
-        tx_wr += (len0 + len1);
-        cout << "Writing new TX_WR " << tx_wr << endl;
-        set_Sn_TX_WR(spi0, 0, tx_wr);
-        // Tell the controller that we've done a send
+        // Adjust pointers.  No regard to wrapping in this logic
+        set_Sn_TX_WR(spi0, 0, tx_wr + (len0 + len1));
+        // Tell the controller that we've done a SEND
         set_Sn_CR(spi0, 0, 0x20);
-        // Wait for the command to be executed
+        // Wait for the SEND command to be executed
         while (get_Sn_CR(spi0, 0));
     
         prettyHexDump((const uint8_t*)&req, len0, cout, true);
-
-        tx_fsr = get_Sn_TX_FSR(spi0, 0);
-        cout << "TX_FSR " << tx_fsr << endl;
-        tx_wr = get_Sn_TX_WR(spi0, 0);            
-        cout << "TX_WR " << tx_wr << endl;
-        tx_rd = get_Sn_TX_RD(spi0, 0);            
-        cout << "TX_RD " << tx_rd << endl;
     }
 
     // Receive loop
@@ -688,7 +644,6 @@ int main() {
 
             const uint8_t* workPtr = buf;
             uint16_t workLen = len0 + len1;
-            int part = 0;
 
             while (workLen > 0) {
 
@@ -700,23 +655,6 @@ int main() {
                     workLen = 0;
                 }
                 else {
-
-                    //cout << "TYP: " << ntohs(ethHdr->typ) << endl;
-                    /*
-
-                    if (ntohs(ethHdr->typ) == 0x0806) {
-                        const ARP* arp = (const ARP*)(buf + 2 + sizeof(Ethernet2Header));
-                        cout << "ARP op=" << ntohs(arp->opcode) << endl;
-                        formatMAC(arp->sndMAC, buf2);
-                        cout << "SND MAC: " << buf2 << endl;
-                        formatIP4(arp->sndIP4, buf2);
-                        cout << "SND IP4: " << buf2 << endl;
-                        formatMAC(arp->tgtMAC, buf2);
-                        cout << "TGT MAC: " << buf2 << endl;
-                        formatIP4(arp->tgtIP4, buf2);
-                        cout << "TGT IP4: " << buf2 << endl;
-                    }
-                    */
 
                     if (*(workPtr + 2 + 35) == 0x43 ||
                         *(workPtr + 2 + 35) == 0x44) {
