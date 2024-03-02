@@ -5,6 +5,14 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
+if(DEFINED ENV{PICO_BUILD})
+message("----- PICO build ---------------------------------------------------------------")
+add_compile_options(-Wall -g)
+else()
+message("Desktop build!")
+add_compile_options(-fstack-protector-all -Wall -Wpedantic -g)
+endif()
+
 # ----- main ------------------------------------------------------------------
 
 add_executable(main
@@ -73,5 +81,8 @@ pico_enable_stdio_usb(hello-w5500-2 1)
 # Watch out here!  We need to make sure that the STDOUT doesn't 
 # get sent on the UART as well.
 pico_enable_stdio_uart(hello-w5500-2 0)
+target_compile_definitions(hello-w5500-2 PRIVATE PARAM_ASSERTIONS_ENABLE_ALL=1)
+target_compile_definitions(hello-w5500-2 PRIVATE PICO_BUILD=1)
+
 target_link_libraries(hello-w5500-2 pico_stdlib hardware_spi)
 
