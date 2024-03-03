@@ -771,10 +771,8 @@ int main() {
         // Process packet
         auto ethHdr = (const EthHeader*)buf;
         if (ethHdr->isIP4()) {
-            cout << "A" << endl;
             auto ipHdr = (const IP4Header*)(buf + sizeof(EthHeader));
             if (ipHdr->isUDP()) {
-                cout << "B" << endl;
                 auto udpHdr = (const UDPHeader*)(buf + sizeof(EthHeader) + sizeof(IP4Header));
                 if (udpHdr->getDstPort() == 68) {
 

@@ -86,3 +86,20 @@ target_compile_definitions(hello-w5500-2 PRIVATE PICO_BUILD=1)
 
 target_link_libraries(hello-w5500-2 pico_stdlib hardware_spi)
 
+# ----- hello-async -----------------------------------------------------------
+
+add_executable(hello-async
+  hello-async.cpp
+)
+
+pico_enable_stdio_usb(hello-async 1)
+# Watch out here!  We need to make sure that the STDOUT doesn't 
+# get sent on the UART as well.
+pico_enable_stdio_uart(hello-async 0)
+target_compile_definitions(hello-async PRIVATE PARAM_ASSERTIONS_ENABLE_ALL=1)
+target_compile_definitions(hello-async PRIVATE PICO_BUILD=1)
+
+target_link_libraries(hello-async pico_stdlib)
+
+
+
