@@ -101,5 +101,17 @@ target_compile_definitions(hello-async PRIVATE PICO_BUILD=1)
 
 target_link_libraries(hello-async pico_stdlib)
 
+# ----- hello-wifi ------------------------------------------------------------
+
+add_executable(hello-wifi
+  hello-wifi.cpp
+)
+pico_enable_stdio_usb(hello-wifi 1)
+pico_enable_stdio_uart(hello-wifi 0)
+pico_add_extra_outputs(hello-wifi)
+target_include_directories(hello-wifi PRIVATE ${CMAKE_CURRENT_LIST_DIR} )
+target_link_libraries(hello-wifi pico_cyw43_arch_lwip_poll pico_stdlib)
+
+
 
 
