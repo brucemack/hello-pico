@@ -6,8 +6,7 @@
 #include "hardware/i2c.h"
 #include "hardware/uart.h"
 
-const uint LED_PIN = 25;
-
+#define LED_PIN (25)
 #define UART_ID uart0
 #define UART_TX_PIN 0
 #define UART_RX_PIN 1
@@ -19,11 +18,19 @@ const uint LED_PIN = 25;
 using namespace std;
 
 /*
-Load command:
+cd hello-pico
+mkdidr build
+cd build
+cmake ..
+export PICO_BUILD=1
+make hello-uart
 openocd -f interface/raspberrypi-swd.cfg -f target/rp2040.cfg -c "program hello-uart.elf verify reset exit"
 
-Minicom (for console, not the UART being tested):
+# Minicom (For PICO console, not the UART being tested in this example):
 minicom -b 115200 -o -D /dev/ttyACM0
+
+# Minicom to see raw UART being tested
+minicom -b 115200 -o -D /dev/serial0
 */
 int main() {
  

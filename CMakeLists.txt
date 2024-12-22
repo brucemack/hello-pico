@@ -32,7 +32,7 @@ add_executable(hello-uart
 pico_enable_stdio_usb(hello-uart 1)
 # Watch out here!  We need to make sure that the STDOUT doesn't 
 # get sent on the UART as well.
-pico_enable_stdio_uart(hello-uart 0)
+#pico_enable_stdio_uart(hello-uart 0)
 target_link_libraries(hello-uart pico_stdlib hardware_i2c)
 
 # ----- hello-audio -----------------------------------------------------------

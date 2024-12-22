@@ -13,7 +13,7 @@
 using namespace std;
 
 char ssid[] = "Gloucester Island Municipal WIFI";
-char pass[] = "xxxxx";
+char pass[] = "xxx";
  
 static void myRecv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
     printf("Got %c\n", pbuf_get_at(p, 0));
