@@ -22,13 +22,19 @@ cp test.uf2 /media/bruce/RPI-RP2
 # Use this command to flash:
 openocd -f interface/raspberrypi-swd.cfg -f target/rp2040.cfg -c "program test.elf verify reset exit"
 
-# Looking at the serial port:
+# Or this, when using (a) local build of openocd (b) Pico debug probe (c) Pico2
+# ~/git/openocd/src/openocd -s ~/git/openocd/tcl -f interface/cmsis-dap.cfg -f target/rp2350.cfg -c "adapter speed 5000" -c "rp2350.dap.core1 cortex_m reset_config sysresetreq" -c "program main.elf verify reset exit"
+
+# Looking at the serial port (Pico 1):
 minicom -b 115200 -o -D /dev/ttyACM0
+
+# Looking at the serial port (Pico 2):
+minicom -b 115200 -o -D /dev/ttyACM1
 */
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
-#include "hardware/i2c.h"
+//#include "hardware/i2c.h"
 #include "pico/binary_info.h"
 
 #define I2C0_SDA 4 // Pin 6: I2C channel 0 - data
@@ -42,26 +48,24 @@ bool reserved_addr(uint8_t addr) {
 
 int main() {
  
-    bi_decl(bi_program_description("This is a test binary."));
-    bi_decl(bi_1pin_with_name(LED_PIN, "On-board LED"));
-
     stdio_init_all();
 
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
     
     // This example will use I2C0 on the default SDA and SCL pins (GP4, GP5 on a Pico)
-    i2c_init(i2c_default, 100 * 1000);
-    gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
-    gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
-    gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
+    //i2c_init(i2c_default, 100 * 1000);
+    //gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
+    //gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
+    //gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
+    //gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
     
     gpio_put(LED_PIN, 1);
     sleep_ms(1000);
     gpio_put(LED_PIN, 0);
     sleep_ms(1000);
 
+    /*
     // I2C SCAN
     printf("\nI2C Bus Scan\n");
     printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
@@ -81,12 +85,13 @@ int main() {
       printf(ret < 0 ? "." : "@");
       printf(addr % 16 == 15 ? "\n" : "  ");
     }
-    
+    */
+
     while (1) {
         gpio_put(LED_PIN, 0);
         sleep_ms(1000);
         gpio_put(LED_PIN, 1);
-        //puts("Hello World\n");
+        puts("Hello World");
         sleep_ms(1000);
     }
 }
