@@ -54,9 +54,50 @@ Command used to flash code to board:
 
         ~/git/openocd/src/openocd -s ~/git/openocd/tcl -f interface/cmsis-dap.cfg -f target/rp2350.cfg -c "adapter speed 5000" -c "rp2350.dap.core1 cortex_m reset_config sysresetreq" -c "program main.elf verify reset exit"
 
+Steps to Build CMSIS-DSP
+========================
 
+        cd ~/pico
+        mkdir CMSISDSP
+        cd CMSISDSP
+        git clone https://github.com/ARM-software/CMSIS-DSP.git        
+        git clone https://github.com/ARM-software/CMSIS_6.git
+        cp $PICO_SDK_PATH/external/pico_sdk_import.cmake .
+        (Setup the CMakeLists.txt shown below)
+        mkdir build
+        cd build
+        cmake ..
+        make -j4
 
+What the CMakeLists.txt looks like:
 
-        
+```
+cmake_minimum_required (VERSION 3.6)
+
+# Pull in Pico SDK (must be before project)
+include(pico_sdk_import.cmake) 
+
+set(HOME $ENV{HOME})
+set(CMSISDSP ${HOME}/pico/CMSISDSP/CMSIS-DSP)
+set(CMSISCORE ${HOME}/pico/CMSISDSP/CMSIS_6/CMSIS/Core)
+
+# Define the project
+project (cmsis-dsp VERSION 0.1)
+
+# Initialise the Pico SDK
+pico_sdk_init()
+
+add_subdirectory(${CMSISDSP}/Source bin_dsp)
+
+target_compile_options(CMSISDSP PUBLIC 
+    -Wsign-compare
+    -Wdouble-promotion
+    -Ofast -ffast-math
+    -DNDEBUG
+    -Wall -Wextra  -Werror
+    -fshort-enums 
+    #-fshort-wchar
+)
+```
 
 

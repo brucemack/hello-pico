@@ -1,3 +1,21 @@
+/*
+Building:
+
+    export PICO_SDK_FETCH_FROM_GIT=1
+    mkdir build
+    cd build
+    cmake .. -DPICO_BOARD=pico_w
+    make hello-wifi
+
+Flashing:
+
+    ~/git/openocd/src/openocd -s ~/git/openocd/tcl -f interface/cmsis-dap.cfg -f target/rp2040.cfg -c "adapter speed 5000" -c "program hello-wifi.elf verify reset exit"
+
+Serial console:
+
+    minicom -b 115200 -o -D /dev/ttyACM1
+*/
+
 #include <stdio.h>
 #include <iostream>
 
